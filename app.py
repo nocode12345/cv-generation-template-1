@@ -155,7 +155,7 @@ def validate_json_colors(data):
     """Recursively validate and fix color values in the JSON to prevent invalid hex codes like '#0'."""
     if isinstance(data, dict):
         for key, value in data.items():
-            if key in ['color', 'font_color', 'color']:  # Adjust based on your JSON structure
+            if key.lower() in ['color', 'font_color']:  # Adjust based on your JSON structure
                 data[key] = validate_color(value)
             elif isinstance(value, (dict, list)):
                 validate_json_colors(value)
@@ -174,17 +174,30 @@ def generate_cv():
         data = request.json
         logger.debug(f"JSON data received: {data}")
 
-        # Ensure data is a dictionary (unwrap if it’s an array with a single object containing 'text')
-        if isinstance(data, list) and len(data) == 1 and isinstance(data[0], dict) and 'text' in data[0]:
-            try:
-                # Parse the JSON string in 'text' to an object
-                data = json.loads(data[0]['text'])
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse JSON text: {str(e)}")
-                return jsonify({"error": "Invalid JSON text in request"}), 400
+        # Ensure data is a dictionary (unwrap if it’s an array with a single object containing 'text' or 'cv_data')
+        if isinstance(data, list) and len(data) == 1 and isinstance(data[0], dict):
+            if 'text' in data[0]:
+                try:
+                    # Parse the JSON string in 'text' to an object
+                    data = json.loads(data[0]['text'])
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse JSON text: {str(e)}")
+                    return jsonify({"error": "Invalid JSON text in request"}), 400
+            elif 'cv_data' in data[0] and isinstance(data[0]['cv_data'], list) and len(data[0]['cv_data']) > 0:
+                cv_data = data[0]['cv_data'][0]
+                if 'text' in cv_data:
+                    try:
+                        data = json.loads(cv_data['text'])
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse JSON text in cv_data: {str(e)}")
+                        return jsonify({"error": "Invalid JSON text in cv_data"}), 400
         elif not isinstance(data, dict):
-            logger.error("Invalid JSON data structure: expected object or list with text field")
+            logger.error("Invalid JSON data structure: expected object or list with text/cv_data field")
             return jsonify({"error": "Invalid JSON data structure"}), 400
+
+        # Remove fullRawText if it exists
+        if data.hasOwnProperty('fullRawText'):
+            del data['fullRawText']
 
         # Validate and fix any color values in the JSON
         validate_json_colors(data)
