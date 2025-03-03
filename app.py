@@ -36,7 +36,9 @@ def add_text_run(paragraph, text, font_name=DEFAULT_FONT, font_size=DEFAULT_SIZE
     run.font.italic = italic
     run.font.underline = underline
     try:
-        run.font.color.rgb = RGBColor.from_string(validate_color(color))
+        validated_color = validate_color(color)
+        run.font.color.rgb = RGBColor.from_string(validated_color)
+        logger.debug(f"Applied color {validated_color} to text: {text}")
     except ValueError as e:
         logger.warning(f"Invalid color {color} in add_text_run, defaulting to black: {str(e)}")
         run.font.color.rgb = RGBColor.from_string(BLACK_COLOR)
@@ -51,7 +53,9 @@ def add_hyperlink(paragraph, text, url, font_name=DEFAULT_FONT, font_size=DEFAUL
     hyperlink.set(qn('r:id'), r_id)
     run._r.append(hyperlink)
     try:
-        add_text_run(run, text, font_name, font_size, color=validate_color(color), underline=True)
+        validated_color = validate_color(color)
+        add_text_run(run, text, font_name, font_size, color=validated_color, underline=True)
+        logger.debug(f"Applied color {validated_color} to hyperlink: {text}")
     except ValueError as e:
         logger.warning(f"Invalid color {color} in add_hyperlink, defaulting to blue: {str(e)}")
         add_text_run(run, text, font_name, font_size, color=BLUE_COLOR, underline=True)
@@ -117,6 +121,7 @@ def add_line(doc, width_percent='100%', height_pt=1, color=BLACK_COLOR,
         fill = OxmlElement('v:fill')
         fill.set(qn('color2'), validated_color[1:])
         shape.append(fill)
+        logger.debug(f"Applied color {validated_color} to line")
     except ValueError as e:
         logger.warning(f"Invalid color {color} in add_line, defaulting to black: {str(e)}")
         fill = OxmlElement('v:fill')
@@ -155,8 +160,9 @@ def validate_json_colors(data):
     """Recursively validate and fix color values in the JSON to prevent invalid hex codes like '#0'."""
     if isinstance(data, dict):
         for key in list(data.keys()):  # Use list() to avoid runtime modification issues
-            if key.lower() in ['color', 'font_color']:  # Adjust based on your JSON structure
+            if key.lower() in ['color', 'font_color', 'textcolor']:  # Expanded to catch variations
                 data[key] = validate_color(data[key])
+                logger.debug(f"Sanitized color for key {key}: {data[key]}")
             elif isinstance(data[key], (dict, list)):
                 validate_json_colors(data[key])
     elif isinstance(data, list):
