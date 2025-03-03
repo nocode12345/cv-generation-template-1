@@ -35,7 +35,11 @@ def add_text_run(paragraph, text, font_name=DEFAULT_FONT, font_size=DEFAULT_SIZE
     run.font.bold = bold
     run.font.italic = italic
     run.font.underline = underline
-    run.font.color.rgb = RGBColor.from_string(color)
+    try:
+        run.font.color.rgb = RGBColor.from_string(validate_color(color))
+    except ValueError as e:
+        logger.warning(f"Invalid color {color} in add_text_run, defaulting to black: {str(e)}")
+        run.font.color.rgb = RGBColor.from_string(BLACK_COLOR)
 
 def add_hyperlink(paragraph, text, url, font_name=DEFAULT_FONT, font_size=DEFAULT_SIZE, color=BLUE_COLOR):
     """Add a clickable hyperlink to a paragraph."""
@@ -46,7 +50,11 @@ def add_hyperlink(paragraph, text, url, font_name=DEFAULT_FONT, font_size=DEFAUL
     hyperlink = OxmlElement('w:hyperlink')
     hyperlink.set(qn('r:id'), r_id)
     run._r.append(hyperlink)
-    add_text_run(run, text, font_name, font_size, color=color, underline=True)
+    try:
+        add_text_run(run, text, font_name, font_size, color=validate_color(color), underline=True)
+    except ValueError as e:
+        logger.warning(f"Invalid color {color} in add_hyperlink, defaulting to blue: {str(e)}")
+        add_text_run(run, text, font_name, font_size, color=BLUE_COLOR, underline=True)
 
 def add_paragraph(doc, text, alignment=WD_ALIGN_PARAGRAPH.LEFT, font_name=DEFAULT_FONT, font_size=DEFAULT_SIZE, 
                   bold=False, italic=False, spacing_before=0, spacing_after=6, line_spacing=LINE_SPACING):
@@ -104,10 +112,16 @@ def add_line(doc, width_percent='100%', height_pt=1, color=BLACK_COLOR,
     width_value = float(width_percent.strip('%')) / 100 * (PAGE_WIDTH_CM - (2 * MARGINS_CM)) * 36000 / 2.54  # Convert % to twips
     shape.set(qn('v:width'), str(int(width_value)))  # Width in EMUs (1 cm = 914400 EMUs)
     shape.set(qn('v:height'), str(int(height_pt * 12700)))  # Height in EMUs (1 pt = 12700 EMUs)
-    validated_color = validate_color(color)
-    fill = OxmlElement('v:fill')
-    fill.set(qn('color2'), validated_color[1:])
-    shape.append(fill)
+    try:
+        validated_color = validate_color(color)
+        fill = OxmlElement('v:fill')
+        fill.set(qn('color2'), validated_color[1:])
+        shape.append(fill)
+    except ValueError as e:
+        logger.warning(f"Invalid color {color} in add_line, defaulting to black: {str(e)}")
+        fill = OxmlElement('v:fill')
+        fill.set(qn('color2'), BLACK_COLOR[1:])
+        shape.append(fill)
     line.append(shape)
     paragraph._p.append(line)
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -115,21 +129,39 @@ def add_line(doc, width_percent='100%', height_pt=1, color=BLACK_COLOR,
     paragraph.paragraph_format.space_after = Pt(spacing_after)
 
 def validate_color(color):
-    """Validate and normalize a hexadecimal color code (e.g., '#000000' or '#FFF')."""
+    """Validate and normalize a hexadecimal color code, defaulting to black if invalid."""
     if not isinstance(color, str):
-        return "#000000"
+        logger.warning(f"Invalid color type for value: {color}, defaulting to #000000")
+        return BLACK_COLOR
     color = color.strip().lstrip('#')
     if not color:
-        return "#000000"
+        logger.warning(f"Empty color value, defaulting to #000000")
+        return BLACK_COLOR
     try:
+        # Ensure it's a valid hex color (3 or 6 chars)
         if len(color) not in (3, 6):
-            return "#000000"
+            logger.warning(f"Invalid hex color length: {color} (must be 3 or 6 chars after '#'), defaulting to #000000")
+            return BLACK_COLOR
         int(color, 16)  # Test if it's a valid hex number
+        # Pad to 6 chars if 3 chars (e.g., 'FFF' -> 'FFFFFF')
         if len(color) == 3:
             color = ''.join(c * 2 for c in color)
         return f"#{color}"
-    except ValueError:
-        return "#000000"
+    except ValueError as e:
+        logger.warning(f"Invalid hex color: {color} - {str(e)}, defaulting to #000000")
+        return BLACK_COLOR
+
+def validate_json_colors(data):
+    """Recursively validate and fix color values in the JSON to prevent invalid hex codes like '#0'."""
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key in ['color', 'font_color', 'color']:  # Adjust based on your JSON structure
+                data[key] = validate_color(value)
+            elif isinstance(value, (dict, list)):
+                validate_json_colors(value)
+    elif isinstance(data, list):
+        for item in data:
+            validate_json_colors(item)
 
 @app.route('/generate_cv', methods=['POST'])
 def generate_cv():
@@ -153,6 +185,9 @@ def generate_cv():
         elif not isinstance(data, dict):
             logger.error("Invalid JSON data structure: expected object or list with text field")
             return jsonify({"error": "Invalid JSON data structure"}), 400
+
+        # Validate and fix any color values in the JSON
+        validate_json_colors(data)
 
         # Check for required fields in the schema
         required_fields = ['personalInformation', 'contactDetails', 'overview', 'workExperience', 'education', 'skills']
