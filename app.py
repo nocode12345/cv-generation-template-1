@@ -68,13 +68,14 @@ def generate_cv():
             logger.error("No JSON data received")
             return jsonify({"error": "Invalid JSON data"}), 400
         data = request.json
-        logger.debug(f"JSON data received: {data}")
+        logger.debug(f"JSON data received: {json.dumps(data, indent=2)}")
 
-        # Check for required JSON structure (simplified for schema compatibility)
+        # Check for required JSON structure
         required_sections = ['personalInformation', 'contactDetails', 'overview', 'workExperience', 'education', 'skills']
-        if not all(section in data for section in required_sections):
-            logger.error("Invalid JSON data structure")
-            return jsonify({"error": "Invalid JSON data structure, missing required sections"}), 400
+        missing_sections = [s for s in required_sections if s not in data or not data[s]]
+        if missing_sections:
+            logger.error(f"Missing required sections: {missing_sections}")
+            return jsonify({"error": f"Invalid JSON data structure, missing required sections: {missing_sections}"}), 400
 
         # Create Word document
         doc = Document()
@@ -90,7 +91,7 @@ def generate_cv():
 
         # Header: Personal Information and Contact Details
         # Name (Heading 1: Arial, 20pt, bold, centered)
-        name = data['personalInformation']['name'] if data['personalInformation']['name'] != "N/A" else "N/A"
+        name = data['personalInformation'].get('name', 'N/A')
         p = doc.add_paragraph(name, style='Heading 1')
         p.runs[0].font.name = 'Arial'
         p.runs[0].font.size = Pt(20)
@@ -100,13 +101,13 @@ def generate_cv():
 
         # Contact Details (Arial, 10pt, centered)
         contact_text = []
-        if data['contactDetails']['phone'] != "N/A":
+        if data['contactDetails'].get('phone', 'N/A') != "N/A":
             contact_text.append(data['contactDetails']['phone'])
-        if data['contactDetails']['email'] != "N/A":
+        if data['contactDetails'].get('email', 'N/A') != "N/A":
             contact_text.append(data['contactDetails']['email'])
-        if data['contactDetails']['website'] != "N/A":
+        if data['contactDetails'].get('website', 'N/A') != "N/A":
             contact_text.append(data['contactDetails']['website'])
-        if data['contactDetails']['location']['city'] != "N/A" and data['contactDetails']['location']['countryCode'] != "N/A":
+        if data['contactDetails']['location'].get('city', 'N/A') != "N/A" and data['contactDetails']['location'].get('countryCode', 'N/A') != "N/A":
             contact_text.append(f"{data['contactDetails']['location']['city']}, {data['contactDetails']['location']['countryCode']}")
         if contact_text:
             contact_str = " | ".join(contact_text)
@@ -116,15 +117,15 @@ def generate_cv():
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             p.paragraph_format.space_after = Pt(12)
 
-        # Overview: Desired Role and Tagline (Arial, 14pt, bold, centered)
-        if data['overview']['desired_role'] != "N/A":
+        # Overview: Desired Role and Tagline (Arial, 14pt, bold, centered; 10pt for tagline)
+        if data['overview'].get('desired_role', 'N/A') != "N/A":
             p = doc.add_paragraph(data['overview']['desired_role'])
             p.runs[0].font.name = 'Arial'
             p.runs[0].font.size = Pt(14)
             p.runs[0].bold = True
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             p.paragraph_format.space_after = Pt(6)
-        if data['overview']['tagline'] != "N/A":
+        if data['overview'].get('tagline', 'N/A') != "N/A":
             p = doc.add_paragraph(data['overview']['tagline'])
             p.runs[0].font.name = 'Arial'
             p.runs[0].font.size = Pt(10)
@@ -136,29 +137,28 @@ def generate_cv():
 
         # Process Overview Sections (e.g., Professional Overview, Career Highlights)
         for key, value in data['overview'].items():
-            if key not in ['desired_role', 'tagline'] and value:  # Skip desired_role and tagline
-                if isinstance(value, list) and value and value[0] != "N/A":
-                    # Add heading (Arial, 14pt, bold)
-                    doc.add_heading(key, level=2).runs[0].font.name = 'Arial'
-                    doc.paragraphs[-1].runs[0].font.size = Pt(14)
-                    doc.paragraphs[-1].runs[0].bold = True
-                    doc.paragraphs[-1].paragraph_format.space_before = Pt(12)
-                    doc.paragraphs[-1].paragraph_format.space_after = Pt(6)
+            if key not in ['desired_role', 'tagline'] and value and (isinstance(value, list) and value and value[0] != "N/A"):
+                # Add heading (Arial, 14pt, bold)
+                doc.add_heading(key, level=2).runs[0].font.name = 'Arial'
+                doc.paragraphs[-1].runs[0].font.size = Pt(14)
+                doc.paragraphs[-1].runs[0].bold = True
+                doc.paragraphs[-1].paragraph_format.space_before = Pt(12)
+                doc.paragraphs[-1].paragraph_format.space_after = Pt(6)
 
-                    # Add bullets or paragraphs (Arial, 10pt)
-                    for item in value:
-                        if item.startswith('•') or item.startswith(''):
-                            p = doc.add_paragraph(item, style='List Bullet')
-                            p.runs[0].font.name = 'Arial'
-                            p.runs[0].font.size = Pt(10)
-                            p.paragraph_format.left_indent = Cm(0.63)
-                            p.paragraph_format.line_spacing = 1.15
-                        else:
-                            p = doc.add_paragraph(item)
-                            p.runs[0].font.name = 'Arial'
-                            p.runs[0].font.size = Pt(10)
-                            p.paragraph_format.line_spacing = 1.15
-                    doc.paragraphs[-1].paragraph_format.space_after = Pt(6)
+                # Add bullets or paragraphs (Arial, 10pt)
+                for item in value:
+                    if item.startswith('•') or item.startswith(''):
+                        p = doc.add_paragraph(item, style='List Bullet')
+                        p.runs[0].font.name = 'Arial'
+                        p.runs[0].font.size = Pt(10)
+                        p.paragraph_format.left_indent = Cm(0.63)
+                        p.paragraph_format.line_spacing = 1.15
+                    else:
+                        p = doc.add_paragraph(item)
+                        p.runs[0].font.name = 'Arial'
+                        p.runs[0].font.size = Pt(10)
+                        p.paragraph_format.line_spacing = 1.15
+                doc.paragraphs[-1].paragraph_format.space_after = Pt(6)
 
         # Work Experience (Arial, 12pt, bold for job titles; 10pt for details)
         if data['workExperience']:
@@ -223,7 +223,7 @@ def generate_cv():
                 p.paragraph_format.line_spacing = 1.15
                 p.paragraph_format.space_after = Pt(6)
 
-        # Skills (Arial, 14pt, bold for heading; 10pt for table or bullets)
+        # Skills (Arial, 14pt, bold for heading; 10pt for table)
         if data['skills']:
             doc.add_heading('Key Skills & Expertise', level=2).runs[0].font.name = 'Arial'
             doc.paragraphs[-1].runs[0].font.size = Pt(14)
@@ -297,6 +297,12 @@ def generate_cv():
         logger.debug(f"Word document generated and saved at {output_path}")
         return send_file(output_path, as_attachment=True, download_name=output_filename, 
                          mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    except KeyError as e:
+        logger.error(f"KeyError in JSON processing: {str(e)}")
+        return jsonify({"error": f"Missing key in JSON: {str(e)}"}), 400
+    except ValueError as e:
+        logger.error(f"ValueError in JSON processing: {str(e)}")
+        return jsonify({"error": f"Invalid value in JSON: {str(e)}"}), 400
     except Exception as e:
         logger.error(f"Error in /generate_cv: {str(e)}")
         return jsonify({"error": f"Internal Server Error: {str(e)}"}), 500
