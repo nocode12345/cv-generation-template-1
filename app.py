@@ -3,12 +3,12 @@ from docx import Document
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt, Cm
+from docx.shared import Pt, Cm, RGBColor
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 import json
 import os
 from datetime import datetime
 import logging
-from docx.opc.constants import RELATIONSHIP_TYPE as RT
 
 # Configure logging for debugging
 logging.basicConfig(level=logging.DEBUG)
@@ -142,9 +142,10 @@ def generate_cv():
         data = request.json
         logger.debug(f"JSON data received: {data}")
 
-        # Ensure data is a dictionary (unwrap if it’s an array with a single object)
+        # Ensure data is a dictionary (unwrap if it’s an array with a single object containing 'text')
         if isinstance(data, list) and len(data) == 1 and isinstance(data[0], dict) and 'text' in data[0]:
             try:
+                # Parse the JSON string in 'text' to an object
                 data = json.loads(data[0]['text'])
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse JSON text: {str(e)}")
